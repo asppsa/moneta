@@ -2,7 +2,7 @@ source 'https://rubygems.org'
 gemspec
 
 # Testing
-gem 'rspec'
+gem 'rspec', '~> 2.0'
 gem 'rspec-retry'
 
 # Serializer used by Transformer
