@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+
+group, groups = ARGV
+
+case group
+when /^benchmarks:/
+  benchmarks = group.match(/^benchmarks:(.*)$/)[1]
+
+  exec "bundle exec scripts/benchmarks #{benchmarks}"
+when 'unstable'
+  unstable = %w(quicklz riak cassandra)
+  unstable += %w(pstore) if defined?(JRUBY_VERSION)
+
+  unstable_specs = Dir["spec/**/*{#{unstable.join(',')}}*_spec.rb"]
+  puts "bundle exec rspec -t unstable #{unstable_specs.join(' ')}"
+else
+  exec "bundle exec parallel_rspec spec -n #{groups} --only-group #{group} -o '-t ~unstable'"
+end

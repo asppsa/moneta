@@ -52,6 +52,7 @@ RSpec.configure do |config|
   config.color = true
   config.tty = true
   config.formatter = ENV['PARALLEL_TESTS'] ? MonetaParallelFormatter : :progress
+  config.treat_symbols_as_metadata_keys_with_true_values = true
 end
 
 # Disable jruby stdout pollution by memcached
@@ -147,10 +148,10 @@ class InitializeStore
   end
 end
 
-def describe_moneta(name, &block)
+def describe_moneta(name, *args, &block)
   begin
     InitializeStore.new(&block)
-    describe(name, &block)
+    describe(name, *args, &block)
   rescue LoadError => ex
     puts "\e[31mTest #{name} not executed: #{ex.class} - #{ex.message}\e[0m"
   rescue Exception => ex
