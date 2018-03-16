@@ -1,10 +1,11 @@
 language: ruby
 rvm:
-  - 2.1
-  - 2.0.0
-  - 1.9.3
-  - jruby-1.7
-  - rbx-2
+  - 2.5
+  - 2.4
+  - 2.3
+  - 2.2
+  - jruby
+  - rbx
 services:
   - riak
   - couchdb
@@ -45,8 +46,8 @@ env:
     - "SCRIPT='benchmarks normal_large'"
 matrix:
   allow_failures:
-    - rvm: jruby-1.7
-    - rvm: rbx-2
+    - rvm: jruby
+    - rvm: rbx
     - env: "SCRIPT='parallel-tests unstable'"
 script: "eval bundle exec ruby script/$SCRIPT"
 branches:
