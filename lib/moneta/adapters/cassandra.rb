@@ -28,13 +28,7 @@ module Moneta
             ::Cassandra.cluster(options).connect(keyspace)
           rescue ::Cassandra::Errors::InvalidError
             @backend = ::Cassandra.cluster(options).connect
-            @backend.execute <<-CQL
-              CREATE KEYSPACE #{keyspace}
-              WITH replication = {
-                'class': 'SimpleStrategy',
-                'replication_factor': 1
-              }
-            CQL
+            create_keyspace(keyspace)
             @backend.execute("USE " + keyspace)
             @backend
           end
@@ -118,7 +112,7 @@ module Moneta
 
       # (see Proxy#close)
       def close
-        @backend.close_async
+        @backend.close
         @backend = nil
         nil
       end
@@ -219,6 +213,19 @@ module Moneta
 
       def timestamp
         (Time.now.to_r * 1_000_000).to_i
+      end
+
+      def create_keyspace(keyspace)
+        @backend.execute <<-CQL
+          CREATE KEYSPACE IF NOT EXISTS #{keyspace}
+          WITH replication = {
+            'class': 'SimpleStrategy',
+            'replication_factor': 1
+          }
+        CQL
+      rescue ::Cassandra::Errors::TimeoutError
+        tries ||= 0
+        if (tries += 1) <= 3; retry else raise end
       end
 
       def prepare_statements
