@@ -3,6 +3,9 @@
 echo Starting TokyoTyrant ...
 /usr/sbin/ttserver -dmn -pid /tmp/ttserver.pid -log /tmp/ttserver.log -port 1978
 
+# Start HBase
+$(dirname $0)/start-hbase
+
 # Memcached should already be running, but sometimes it isn't
 if /usr/share/memcached/scripts/memcached-tool 127.0.0.1:11211; then
   echo Memcached appears to be running.
