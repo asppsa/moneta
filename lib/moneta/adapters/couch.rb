@@ -31,26 +31,33 @@ module Moneta
         @type_field = options[:type_field] || 'type'
         url = "http://#{options[:host] || '127.0.0.1'}:#{options[:port] || 5984}/#{options[:db] || 'moneta'}"
         @backend = options[:backend] || ::Faraday.new(url: url)
+        @rev_cache = Moneta.build do
+          use :Lock
+          adapter :LRUHash
+        end
         create_db
       end
 
       # (see Proxy#key?)
       def key?(key, options = {})
-        @backend.head(key).status == 200
+        response = @backend.head(key)
+        update_rev_cache(key, response)
+        response.status == 200
       end
 
       # (see Proxy#load)
       def load(key, options = {})
         response = @backend.get(key)
+        update_rev_cache(key, response)
         response.status == 200 ? body_to_value(response.body) : nil
       end
 
       # (see Proxy#store)
       def store(key, value, options = {})
-        response = @backend.head(key)
-        body = value_to_body(value, response.status == 200 && response['etag'][1..-2])
+        body = value_to_body(value, rev(key))
         response = @backend.put(key, body, 'Content-Type' => 'application/json')
-        raise "HTTP error #{response.status}" unless response.status == 201
+        update_rev_cache(key, response)
+        raise "HTTP error #{response.status} (PUT /#{key})" unless response.status == 201
         value
       rescue
         tries ||= 0
@@ -59,11 +66,13 @@ module Moneta
 
       # (see Proxy#delete)
       def delete(key, options = {})
-        response = @backend.get(key)
-        if response.status == 200
-          value = body_to_value(response.body)
-          response = @backend.delete("#{key}?rev=#{response['etag'][1..-2]}")
-          raise "HTTP error #{response.status}" unless response.status == 200
+        clear_rev_cache(key)
+        get_response = @backend.get(key)
+        if get_response.status == 200
+          existing_rev = get_response['etag'][1..-2]
+          value = body_to_value(get_response.body)
+          delete_response = @backend.delete("#{key}?rev=#{existing_rev}")
+          raise "HTTP error #{response.status}" unless delete_response.status == 200
           value
         end
       rescue
@@ -82,6 +91,7 @@ module Moneta
       def create(key, value, options = {})
         body = value_to_body(value, nil)
         response = @backend.put(key, body, 'Content-Type' => 'application/json')
+        update_rev_cache(key, response)
         case response.status
         when 201
           true
@@ -110,6 +120,7 @@ module Moneta
             skip += result['rows'].length
             result['rows'].each do |row|
               key = row['id']
+              @rev_cache[key] = row['value']['rev']
               yield key
             end
           else
@@ -153,6 +164,27 @@ module Moneta
       def create_db
         response = @backend.put '', ''
         raise "HTTP error #{response.status}" unless response.status == 201 || response.status == 412
+      end
+
+      def update_rev_cache(key, response)
+        case response.status
+        when 200, 201
+          @rev_cache[key] = response['etag'][1..-2]
+        else
+          @rev_cache.delete(key)
+          nil
+        end
+      end
+
+      def clear_rev_cache(key)
+        @rev_cache.delete(key)
+      end
+
+      def rev(key)
+        @rev_cache[key] || (
+          response = @backend.head(key) and
+          update_rev_cache(key, response)).tap do |rev|
+        end
       end
     end
   end
