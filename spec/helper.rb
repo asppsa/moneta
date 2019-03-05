@@ -5,6 +5,7 @@ require 'tmpdir'
 
 ENV['RANTLY_VERBOSE'] ||= '0'
 
+require 'rspec/retry'
 require 'rantly'
 require 'rantly/rspec_extensions'
 # rantly/shrinks
@@ -402,7 +403,7 @@ module MonetaHelpers
 end
 
 RSpec.configure do |config|
-  #config.verbose_retry = true
+  config.verbose_retry = true
   config.color = true
   #config.tty = true
   #config.formatter = ENV['PARALLEL_TESTS'] ? MonetaParallelFormatter : :progress
