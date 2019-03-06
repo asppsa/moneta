@@ -290,28 +290,11 @@ module MonetaHelpers
     end
 
     def at_each_usec(&block)
-      example_name = "#{self}_at_usec"
-      shared_examples example_name do |usec|
+      usecs.each do |usec|
         context "at #{usec} microseconds", isolate: true do
-          before do
-            now = Time.now
-            # 1000us is a rough guess at how many microseconds this code will take to run
-            if now.usec + 1000 > usec
-              advance(1 - 1e-6 * (now.usec - usec))
-            else
-              advance(1e-6 * (usec - now.usec))
-            end
-          end
-
-          after do
-            Timecop.return if @timecop
-          end
-
-          instance_exec(&block)
+          include_examples :at_usec, usec, &block
         end
       end
-
-      usecs.each{ |usec| include_examples example_name, usec }
     end
 
     def use_timecop
@@ -476,6 +459,22 @@ RSpec.shared_context :setup_moneta_store do |builder|
     if @moneta_tempdir
       FileUtils.remove_dir(@moneta_tempdir)
     end
+  end
+end
+
+RSpec.shared_examples :at_usec do |usec|
+  before do
+    now = Time.now
+    # 1000us is a rough guess at how many microseconds this code will take to run
+    if now.usec + 1000 > usec
+      advance(1 - 1e-6 * (now.usec - usec))
+    else
+      advance(1e-6 * (usec - now.usec))
+    end
+  end
+
+  after do
+    Timecop.return if @timecop
   end
 end
 
