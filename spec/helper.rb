@@ -300,6 +300,19 @@ module MonetaHelpers
     def use_timecop
       before{ @timecop = true }
     end
+
+    def start_memcached(port)
+      before :context do
+        @memcached = spawn("memcached -p #{port}")
+        sleep 0.5
+      end
+
+      after :context do
+        Process.kill("TERM", @memcached)
+        Process.wait(@memcached)
+        @memcached = nil
+      end
+    end
   end
 
   module InstanceMethods
