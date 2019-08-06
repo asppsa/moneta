@@ -20,8 +20,7 @@ addons:
   apt:
     sources:
       - cassandra
-      - sourceline: "deb https://apache.bintray.com/couchdb-deb xenial main"
-        key_url: https://couchdb.apache.org/repo/bintray-pubkey.asc
+      - ppa:couchdb/stable
       - sourceline: "deb https://packagecloud.io/basho/riak/ubuntu/ xenial main"
         key_url: https://packagecloud.io/basho/riak/gpgkey
     packages:
@@ -81,13 +80,17 @@ env:
       spec/moneta/adapters/kyotocabinet
       '
     - SCRIPT='script/parallel-tests ~unstable --
-      spec/moneta/adapters/couch
+      spec/moneta/adapters/couch/standard_couch_spec.rb
+      '
+    - SCRIPT='script/parallel-tests ~unstable --
+      spec/moneta/adapters/couch/standard_couch_with_expires_spec.rb
       '
     - SCRIPT='script/parallel-tests ~unstable --
       spec/moneta/adapters/memcached/dalli
       '
     - SCRIPT='script/parallel-tests ~unstable --
       spec/moneta/adapters/memcached/native
+      spec/moneta/adapters/couch/adapter_couch_spec.rb
       '
     - SCRIPT='script/parallel-tests ~unstable --
       spec/moneta/adapters/cassandra/adapter_cassandra_spec.rb
