@@ -52,112 +52,124 @@ describe "pool", proxy: :Pool do
     after { subject.kill! }
 
     shared_examples :no_ttl do
-      let(:num) { 1 }
+      context "with one store" do
+        let(:num) { 1 }
 
-      it "never expires a store" do
-        store = stores.first
-        expect(builder).to receive(:build).once
-        expect(subject.check_out).to be store
-        expect(subject.stats).to include(stores: 1, available: 0)
-        expect(subject.check_in(store)).to eq nil
-        expect(subject.stats).to include(stores: 1, available: 1)
-        sleep 1
-        expect(subject.stats).to include(stores: 1, available: 1)
-        expect(subject.check_out).to be store
-        expect(subject.check_in(store)).to eq nil
+        it "never expires the store" do
+          store = stores.first
+          expect(builder).to receive(:build).once
+          expect(subject.check_out).to be store
+          expect(subject.stats).to include(stores: 1, available: 0)
+          expect(subject.check_in(store)).to eq nil
+          expect(subject.stats).to include(stores: 1, available: 1)
+          sleep 1
+          expect(subject.stats).to include(stores: 1, available: 1)
+          expect(subject.check_out).to be store
+          expect(subject.check_in(store)).to eq nil
+        end
       end
     end
 
     shared_examples :no_max do
-      let(:num) { 1_000 }
+      context "with 1,000 stores" do
+        let(:num) { 1_000 }
 
-      it "never blocks" do
-        # Check out 1000 stores in 1000 threads
-        threads = (0...num).map do
-          Thread.new { subject.check_out }
+        it "never blocks" do
+          # Check out 1000 stores in 1000 threads
+          threads = (0...num).map do
+            Thread.new { subject.check_out }
+          end
+          expect(threads.map(&:value)).to contain_exactly(*stores)
+          expect(subject.stats).to include(stores: num, available: 0, waiting: 0)
+
+          # Check in the first 50
+          expect(stores.take(50).map { |store| subject.check_in(store) }).to all(be nil)
+          expect(subject.stats).to include(stores: num, available: 50, waiting: 0)
+
+          # Now check those 50 out again
+          threads = (0...50).map do
+            Thread.new { subject.check_out }
+          end
+          expect(threads.map(&:value)).to contain_exactly(*stores.take(50))
+
+          # Finally check in all stores
+          expect(stores.map { |store| subject.check_in(store) }).to all(be nil)
         end
-        expect(threads.map(&:value)).to contain_exactly(*stores)
-        expect(subject.stats).to include(stores: num, available: 0, waiting: 0)
-
-        # Check in the first 50
-        expect(stores.take(50).map { |store| subject.check_in(store) }).to all(be nil)
-        expect(subject.stats).to include(stores: num, available: 50, waiting: 0)
-
-        # Now check those 50 out again
-        threads = (0...50).map do
-          Thread.new { subject.check_out }
-        end
-        expect(threads.map(&:value)).to contain_exactly(*stores.take(50))
-
-        # Finally check in all stores
-        expect(stores.map { |store| subject.check_in(store) }).to all(be nil)
       end
     end
 
     shared_examples :min do |min|
-      let(:num) { min }
+      context "with #{min} stores" do
+        let(:num) { min }
 
-      it "starts with #{min} available stores" do
-        expect(subject.stats).to include(stores: min, available: min)
-        expect(min.times.map { subject.check_out }).to contain_exactly(*stores)
+        it "starts with #{min} available stores" do
+          expect(subject.stats).to include(stores: min, available: min)
+          expect(min.times.map { subject.check_out }).to contain_exactly(*stores)
+        end
       end
     end
 
     shared_examples :max do |max|
-      let(:stores) { max.times.map { |i| double("store#{i}") } }
+      context "with #{max} stores" do
+        let(:num) { max }
 
-      it "blocks after #{max} stores have been created" do
-        expect(max.times.map { subject.check_out }).to contain_exactly(*stores)
-        threads = max.times.map { Thread.new { subject.check_out } }
-        Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == max }
-        expect(threads).to all be_alive
-        expect(stores.drop(1).map { |store| subject.check_in(store) }).to all be_nil
-        Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == 1 }
-        alive, dead = threads.partition(&:alive?)
-        expect(dead.map(&:value)).to contain_exactly(*stores.drop(1))
-        expect(subject.check_in(stores.first)).to eq nil
-        Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == 0 }
-        expect(alive.first).not_to be_alive
-        expect(alive.first.value).to be stores.first
-        expect(stores.map { |store| subject.check_in(store) }).to all be_nil
+        it "blocks after #{max} stores have been created" do
+          expect(max.times.map { subject.check_out }).to contain_exactly(*stores)
+          threads = max.times.map { Thread.new { subject.check_out } }
+          Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == max }
+          expect(threads).to all be_alive
+          expect(stores.drop(1).map { |store| subject.check_in(store) }).to all be_nil
+          Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == 1 }
+          alive, dead = threads.partition(&:alive?)
+          expect(dead.map(&:value)).to contain_exactly(*stores.drop(1))
+          expect(subject.check_in(stores.first)).to eq nil
+          Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == 0 }
+          expect(alive.first).not_to be_alive
+          expect(alive.first.value).to be stores.first
+          expect(stores.map { |store| subject.check_in(store) }).to all be_nil
+        end
       end
     end
 
     shared_examples :ttl do |ttl, min: 0, max: nil|
-      let(:num) { max || min + 10 }
+      context "with #{ max || min + 10} stores" do
+        let(:num) { max || min + 10 }
 
-      it "closes available stores after ttl" do
-        stores.each do |store|
-          allow(store).to receive(:close)
+        it "closes available stores after ttl" do
+          stores.each do |store|
+            allow(store).to receive(:close)
+          end
+
+          Timeout.timeout(5) { sleep 0.1 until subject.stats[:stores] == min }
+          expect(stores.length.times.map { subject.check_out }).to contain_exactly(*stores)
+          expect(subject.stats).to include(stores: num, available: 0)
+          expect(stores.map { |store| subject.check_in(store) }).to all be_nil
+          expect(subject.stats).to include(stores: num, available: num)
+          sleep ttl
+          expect(subject.stats).to include(stores: min, available: min)
         end
-
-        Timeout.timeout(5) { sleep 0.1 until subject.stats[:stores] == min }
-        expect(stores.length.times.map { subject.check_out }).to contain_exactly(*stores)
-        expect(subject.stats).to include(stores: num, available: 0)
-        expect(stores.map { |store| subject.check_in(store) }).to all be_nil
-        expect(subject.stats).to include(stores: num, available: num)
-        sleep ttl
-        expect(subject.stats).to include(stores: min, available: min)
       end
     end
 
     shared_examples :timeout do |timeout, max:|
-      let(:num) { max }
+      context "with #{max} stores" do
+        let(:num) { max }
 
-      it "raises a timeout error after waiting too long" do
-        expect((0...num).map { subject.check_out }).to contain_exactly(*stores)
-        t = Thread.new do
-          Thread.current.report_on_exception = false
-          subject.check_out
+        it "raises a timeout error after waiting too long" do
+          expect((0...num).map { subject.check_out }).to contain_exactly(*stores)
+          t = Thread.new do
+            Thread.current.report_on_exception = false
+            subject.check_out
+          end
+          Timeout.timeout(timeout) { sleep(timeout / 8) until subject.stats[:waiting] == 1 }
+          expect(subject.stats[:longest_wait]).to be_a Time
+          expect(t).to be_alive
+          sleep timeout
+          expect(t).not_to be_alive
+          expect { t.value }.to raise_error Moneta::Pool::TimeoutError
+          expect(subject.stats).to include(waiting: 0, longest_wait: nil)
+          expect(stores.map { |store| subject.check_in store }).to all be_nil
         end
-        Timeout.timeout(timeout) { sleep(timeout / 8) until subject.stats[:waiting] == 1 }
-        expect(subject.stats[:longest_wait]).to be_a Time
-        expect(t).to be_alive
-        sleep timeout
-        expect(t).not_to be_alive
-        expect { t.value }.to raise_error Moneta::Pool::TimeoutError
-        expect(subject.stats).to include(waiting: 0, longest_wait: nil)
-        expect(stores.map { |store| subject.check_in store }).to all be_nil
       end
     end
 
@@ -165,54 +177,54 @@ describe "pool", proxy: :Pool do
       subject { Moneta::Pool::PoolManager.new(builder) }
       after { subject.kill! }
 
-      it_behaves_like :no_ttl
-      it_behaves_like :no_max
-      it_behaves_like :min, 0
+      include_examples :no_ttl
+      include_examples :no_max
+      include_examples :min, 0
     end
 
     context "with max: 10, timeout: 3" do
       subject { Moneta::Pool::PoolManager.new(builder, max: 10, timeout: 3) }
       after { subject.kill! }
 
-      it_behaves_like :no_ttl
-      it_behaves_like :max, 10
-      it_behaves_like :min, 0
-      it_behaves_like :timeout, 3, max: 10
+      include_examples :no_ttl
+      include_examples :max, 10
+      include_examples :min, 0
+      include_examples :timeout, 3, max: 10
     end
 
     context "with min: 10" do
       subject { Moneta::Pool::PoolManager.new(builder, min: 10) }
       after { subject.kill! }
 
-      it_behaves_like :no_max
-      it_behaves_like :min, 10
+      include_examples :no_max
+      include_examples :min, 10
     end
 
     context "with ttl: 1" do
       subject { Moneta::Pool::PoolManager.new(builder, ttl: 1) }
       after { subject.kill! }
 
-      it_behaves_like :ttl, 1, min: 0
+      include_examples :ttl, 1, min: 0
     end
 
     context "with min: 10, max: 20, ttl: 1, timeout: 3" do
       subject { Moneta::Pool::PoolManager.new(builder, min: 10, max: 20, ttl: 1, timeout: 3) }
       after { subject.kill! }
 
-      it_behaves_like :min, 10
-      it_behaves_like :max, 20
-      it_behaves_like :ttl, 1, min: 10, max: 20
-      it_behaves_like :timeout, 3, max: 20
+      include_examples :min, 10
+      include_examples :max, 20
+      include_examples :ttl, 1, min: 10, max: 20
+      include_examples :timeout, 3, max: 20
     end
 
     context "with min: 10, max: 10, ttl: 2, timeout: 4" do
       subject { Moneta::Pool::PoolManager.new(builder, min: 10, max: 10, ttl: 2, timeout: 4) }
       after { subject.kill! }
 
-      it_behaves_like :min, 10
-      it_behaves_like :max, 10
-      it_behaves_like :ttl, 2, min: 10, max: 10
-      it_behaves_like :timeout, 4, max: 10
+      include_examples :min, 10
+      include_examples :max, 10
+      include_examples :ttl, 2, min: 10, max: 10
+      include_examples :timeout, 4, max: 10
     end
 
     describe '#check_out' do

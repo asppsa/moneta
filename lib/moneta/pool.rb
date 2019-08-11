@@ -121,7 +121,7 @@ module Moneta
             # feed them timeout errors.
             while @timeout && !@waiting.empty? && (Time.now - @waiting_since.first) >= @timeout
               waiting_since = @waiting_since.shift
-              @waiting.shift.push(TimeoutError.new("Waited %f seconds" % (Time.now - waiting_since)))
+              @waiting.shift.push(TimeoutError.new("Waited %<secs>f seconds" % { secs: Time.now - waiting_since }))
             end
 
             # If the last checkout was more than timeout ago, drop any available stores
@@ -139,7 +139,7 @@ module Moneta
       end
 
       def push(message, what = nil, reply: false)
-        raise ShutdownError.new("Pool has been shutdown") if reply && !@thread.alive?
+        raise ShutdownError, "Pool has been shutdown" if reply && !@thread.alive?
         queue = reply ? Queue.new : nil
         @mutex.synchronize do
           @inbox.push([message, what, queue])
@@ -202,7 +202,7 @@ module Moneta
         reply.push(stores: @stores.length,
                    available: @available.length,
                    waiting: @waiting.length,
-                   longest_wait: (@timeout && !@waiting_since.empty?) ? @waiting_since.first.dup : nil,
+                   longest_wait: @timeout && !@waiting_since.empty? ? @waiting_since.first.dup : nil,
                    stopping: @stopping,
                    last_checkout: @last_checkout.dup)
       end
