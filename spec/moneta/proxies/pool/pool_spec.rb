@@ -113,20 +113,24 @@ describe "pool", proxy: :Pool do
       context "with #{max} stores" do
         let(:num) { max }
 
+        after do
+          expect(stores.map { |store| subject.check_in(store) }).to all be_nil
+        end
+
         it "blocks after #{max} stores have been created" do
           expect(max.times.map { subject.check_out }).to contain_exactly(*stores)
           threads = max.times.map { Thread.new { subject.check_out } }
           Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == max }
           expect(threads).to all be_alive
           expect(stores.drop(1).map { |store| subject.check_in(store) }).to all be_nil
-          Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == 1 }
+          Timeout.timeout(5) { sleep 0.1 until threads.any? { |t| !t.alive? } }
+          expect(subject.stats).to include(waiting: 1)
           alive, dead = threads.partition(&:alive?)
           expect(dead.map(&:value)).to contain_exactly(*stores.drop(1))
           expect(subject.check_in(stores.first)).to eq nil
-          Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] == 0 }
-          expect(alive.first).not_to be_alive
+          Timeout.timeout(5) { sleep 0.1 while alive.first.alive? }
+          expect(subject.stats).to include(waiting: 0)
           expect(alive.first.value).to be stores.first
-          expect(stores.map { |store| subject.check_in(store) }).to all be_nil
         end
       end
     end
@@ -165,7 +169,7 @@ describe "pool", proxy: :Pool do
           expect(subject.stats[:longest_wait]).to be_a Time
           expect(t).to be_alive
           sleep timeout
-          expect(t).not_to be_alive
+          Timeout.timeout(timeout) { sleep(timeout / 8) while t.alive? }
           expect { t.value }.to raise_error Moneta::Pool::TimeoutError
           expect(subject.stats).to include(waiting: 0, longest_wait: nil)
           expect(stores.map { |store| subject.check_in store }).to all be_nil
