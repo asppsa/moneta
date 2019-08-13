@@ -104,7 +104,7 @@ describe "pool", proxy: :Pool do
 
         it "starts with #{min} available stores" do
           expect(subject.stats).to include(stores: min, available: min)
-          expect(min.times.map { subject.check_out }).to contain_exactly(*stores)
+          expect((0...min).map { subject.check_out }).to contain_exactly(*stores)
         end
       end
     end
@@ -161,8 +161,9 @@ describe "pool", proxy: :Pool do
 
         it "raises a timeout error after waiting too long" do
           expect((0...num).map { subject.check_out }).to contain_exactly(*stores)
+          # One extra checkout request in a separate thread
           t = Thread.new do
-            Thread.current.report_on_exception = false
+            Thread.current.report_on_exception = false if Thread.current.respond_to? :report_on_exception
             subject.check_out
           end
           Timeout.timeout(timeout) { sleep(timeout / 8) until subject.stats[:waiting] == 1 }
@@ -270,7 +271,7 @@ describe "pool", proxy: :Pool do
 
         # Simulate a new thread requesting a check-out
         t1 = Thread.new do
-          Thread.current.report_on_exception = false
+          Thread.current.report_on_exception = false if Thread.current.respond_to? :report_on_exception
           subject.check_out
         end
         Timeout.timeout(5) { sleep 0.1 until subject.stats[:waiting] > 0 }

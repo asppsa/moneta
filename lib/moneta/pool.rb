@@ -204,7 +204,7 @@ module Moneta
                    waiting: @waiting.length,
                    longest_wait: @timeout && !@waiting_since.empty? ? @waiting_since.first.dup : nil,
                    stopping: @stopping,
-                   last_checkout: @last_checkout.dup)
+                   last_checkout: @last_checkout && @last_checkout.dup)
       end
 
       def handle(request)
